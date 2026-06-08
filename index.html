@@ -1,21 +1,501 @@
-Last login: Wed May 27 23:05:32 on console
-monicanita@Monicas-MacBook-Air ~ % npm install -g @anthropic-ai/claude-code
-zsh: command not found: npm
-monicanita@Monicas-MacBook-Air ~ % npm install -g @anthropic-ai/claude-code
-zsh: command not found: npm
-monicanita@Monicas-MacBook-Air ~ % cat ~/Downloads/meal-planner.html | pbcopy
-cat: /Users/monicanita/Downloads/meal-planner.html: Operation not permitted
-monicanita@Monicas-MacBook-Air ~ % 
-monicanita@Monicas-MacBook-Air ~ % cat ~/Downloads/meal-planner.html | pbcopy
-cat: /Users/monicanita/Downloads/meal-planner.html: Operation not permitted
-monicanita@Monicas-MacBook-Air ~ % 
-  [Restored 8 Jun 2026 at 22:38:19]
-Last login: Mon Jun  8 22:33:43 on ttys000
-Restored session: Mon Jun  8 22:38:15 EEST 2026
-monicanita@Monicas-MacBook-Air ~ % cat: /Users/monicanita/Downloads/meal-planner.html: Operation not permitted
-zsh: command not found: cat:
-monicanita@Monicas-MacBook-Air ~ % cat ~/Downloads/meal-planner.html | pbcopy
-monicanita@Monicas-MacBook-Air ~ % >....                                        
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Meal Planner">
+<title>My Meal Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e0e;
+    --surface: #161616;
+    --border: #222;
+    --gold: #c8a96e;
+    --gold-light: #e8c98a;
+    --text: #f0ede6;
+    --text-dim: #d4d0c8;
+    --muted: #666;
+    --user-bg: #1a1610;
+    --user-border: rgba(200,169,110,0.2);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+
+  /* API KEY SCREEN */
+  .key-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: 32px 24px;
+    text-align: center;
+  }
+  .key-screen__icon {
+    width: 64px; height: 64px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; margin-bottom: 24px;
+  }
+  .key-screen__title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 26px; font-style: italic;
+    margin-bottom: 10px;
+  }
+  .key-screen__text {
+    font-size: 14px; color: var(--muted);
+    line-height: 1.7; max-width: 340px;
+    margin-bottom: 28px;
+  }
+  .key-screen__text a { color: var(--gold); text-decoration: none; }
+  .key-input-row { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+  .key-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 13px 16px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+  .key-input:focus { border-color: rgba(200,169,110,0.4); }
+  .key-input::placeholder { color: #444; }
+  .key-btn {
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border: none; border-radius: 12px;
+    padding: 13px 20px;
+    color: #0e0e0e; font-weight: 600;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px; cursor: pointer;
+    white-space: nowrap;
+  }
+  .key-note {
+    font-size: 12px; color: #444;
+    margin-top: 16px; max-width: 340px;
+    line-height: 1.6;
+  }
+
+  /* HEADER */
+  .header {
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid #1a1a1a;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .header__left { display: flex; align-items: center; gap: 10px; }
+  .header__icon {
+    width: 34px; height: 34px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0;
+  }
+  .header__title { font-family: 'Instrument Serif', serif; font-size: 20px; }
+  .header__sub { font-size: 11px; color: var(--muted); }
+  .reset-btn {
+    background: none; border: 1px solid #2a2a2a;
+    border-radius: 8px; padding: 6px 10px;
+    color: #555; font-size: 12px; cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .reset-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+  /* STATS */
+  .stats {
+    display: flex; gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid #1a1a1a;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  .stats::-webkit-scrollbar { display: none; }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .stat__label { font-size: 9px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .stat__value { font-size: 13px; font-weight: 600; color: var(--gold); }
+
+  /* MESSAGES */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* WELCOME */
+  .welcome { text-align: center; padding: 24px 8px; }
+  .welcome__emoji { font-size: 44px; margin-bottom: 14px; }
+  .welcome__title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 24px; font-style: italic;
+    margin-bottom: 8px;
+  }
+  .welcome__text { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .suggestions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px; margin-top: 20px;
+  }
+  .suggestion {
+    background: #141414;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 11px 12px;
+    cursor: pointer; text-align: left;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    display: flex; align-items: center; gap: 8px;
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .suggestion:active { background: #1a1610; border-color: var(--gold); }
+  .suggestion__icon { font-size: 18px; flex-shrink: 0; }
+
+  /* MESSAGES */
+  .message {
+    display: flex; gap: 8px; align-items: flex-start;
+    animation: fadeUp 0.2s ease;
+  }
+  .message--user { flex-direction: row-reverse; }
+  .message__avatar {
+    width: 30px; height: 30px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 15px; flex-shrink: 0; margin-top: 2px;
+  }
+  .message__bubble {
+    max-width: 88%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px 14px;
+    font-size: 14px; line-height: 1.65;
+    color: var(--text-dim);
+  }
+  .message--user .message__bubble {
+    background: var(--user-bg);
+    border-color: var(--user-border);
+    color: var(--text);
+  }
+  .message__bubble h2 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 17px; color: var(--gold);
+    margin: 10px 0 5px;
+  }
+  .message__bubble h3 {
+    font-size: 13px; font-weight: 600;
+    color: var(--gold-light); margin: 9px 0 3px;
+  }
+  .message__bubble li { margin-left: 16px; margin-bottom: 2px; }
+  .message__bubble strong { color: var(--text); font-weight: 600; }
+
+  /* LOADING */
+  .loading-msg { display: flex; gap: 8px; align-items: center; }
+  .loading-bubble {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 14px 18px;
+    display: flex; gap: 5px; align-items: center;
+  }
+  .dot {
+    width: 7px; height: 7px;
+    background: var(--gold); border-radius: 50%;
+    animation: bounce 1.2s infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.2s; }
+  .dot:nth-child(3) { animation-delay: 0.4s; }
+
+  /* INPUT */
+  .input-area {
+    padding: 12px 20px 20px;
+    border-top: 1px solid #1a1a1a;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  .input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .input-box {
+    flex: 1;
+    background: #141414;
+    border: 1px solid #252525;
+    border-radius: 14px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    outline: none; resize: none;
+    min-height: 46px; max-height: 120px;
+    line-height: 1.5;
+    -webkit-appearance: none;
+  }
+  .input-box::placeholder { color: #444; }
+  .input-box:focus { border-color: rgba(200,169,110,0.3); }
+  .send-btn {
+    width: 46px; height: 46px;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border: none; border-radius: 12px;
+    cursor: pointer; font-size: 20px;
+    color: #0e0e0e; font-weight: bold;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: opacity 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes bounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-6px); opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- API KEY SCREEN -->
+  <div class="key-screen" id="keyScreen">
+    <div class="key-screen__icon">🥗</div>
+    <div class="key-screen__title">Your Meal Planner</div>
+    <p class="key-screen__text">
+      Enter your free Gemini API key to get started.<br>
+      Get one at <a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> → Get API Key → Create API Key.
+    </p>
+    <div class="key-input-row">
+      <input class="key-input" id="keyInput" type="password" placeholder="Paste your API key here…" />
+      <button class="key-btn" onclick="saveKey()">Start →</button>
+    </div>
+    <p class="key-note">Your key is saved only in this browser and sent directly to Google. It never goes anywhere else.</p>
+  </div>
+
+  <!-- MAIN PLANNER (hidden until key entered) -->
+  <div id="planner" style="display:none; flex-direction:column; height:100dvh;">
+
+    <div class="header">
+      <div class="header__left">
+        <div class="header__icon">🥗</div>
+        <div>
+          <div class="header__title">Meal Planner</div>
+          <div class="header__sub">1,600 cal · 160g+ protein · Low-carb</div>
+        </div>
+      </div>
+      <button class="reset-btn" onclick="clearChat()">New chat</button>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="stat__label">Daily Goal</div><div class="stat__value">1,600 kcal</div></div>
+      <div class="stat"><div class="stat__label">Protein</div><div class="stat__value">160g+</div></div>
+      <div class="stat"><div class="stat__label">Strategy</div><div class="stat__value">Low-carb</div></div>
+      <div class="stat"><div class="stat__label">Expiring</div><div class="stat__value">6 items ⚡</div></div>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="welcome" id="welcome">
+        <div class="welcome__emoji">🍽️</div>
+        <div class="welcome__title">What shall we cook today?</div>
+        <p class="welcome__text">I know your full kitchen inventory and goals.<br>Ask me anything or tap a suggestion below.</p>
+        <div class="suggestions" id="suggestions">
+          <button class="suggestion" onclick="sendSuggestion('Create a full day meal plan hitting 160g protein and around 1600 calories')"><span class="suggestion__icon">🌅</span><span>Plan my full day</span></button>
+          <button class="suggestion" onclick="sendSuggestion('Give me a high-protein breakfast idea under 400 calories')"><span class="suggestion__icon">🍳</span><span>High-protein breakfast</span></button>
+          <button class="suggestion" onclick="sendSuggestion('What is a quick easy lunch I can make with what I have?')"><span class="suggestion__icon">🥗</span><span>Quick lunch</span></button>
+          <button class="suggestion" onclick="sendSuggestion('Make me a satisfying dinner using chicken from my freezer')"><span class="suggestion__icon">🍗</span><span>Dinner with chicken</span></button>
+          <button class="suggestion" onclick="sendSuggestion('Create a delicious low-carb dinner using my salmon fillets')"><span class="suggestion__icon">🐟</span><span>Salmon dinner</span></button>
+          <button class="suggestion" onclick="sendSuggestion('Give me 3 high-protein snack ideas under 200 calories each')"><span class="suggestion__icon">🥤</span><span>Protein snacks</span></button>
+          <button class="suggestion" onclick="sendSuggestion('Help me use up my priority expiring items in meals this week')"><span class="suggestion__icon">⚡</span><span>Use expiring items</span></button>
+          <button class="suggestion" onclick="sendSuggestion('What can I batch cook in my multicooker for easy meals this week?')"><span class="suggestion__icon">🥣</span><span>Batch cook ideas</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-row">
+        <textarea class="input-box" id="inputBox" placeholder="Ask for a meal, recipe, or full day plan…" rows="1"
+          onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>↑</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const PROFILE = `You are a nutrition coach helping a 28-year-old woman (167cm, 99kg) lose weight and reverse insulin resistance. Daily calorie goal: 1,600 calories. Protein target: at least 160g/day. Strategy: low-carb, high-protein. Cooking preference: multicooker and air fryer. No new groceries can be bought right now.
+
+RESTRICTIONS: No spinach ever. No fermented foods — Greek yogurt and skyr are only acceptable when mixed with protein powder, fruit, or sweetener, never plain. Tuna maximum 1 can per week due to mercury concerns.
+
+LIKES: Beef, pork cutlets (loves them with mushrooms), minced meat, chicken thighs, white fish, salmon, shrimp, eggs. Hearty satisfying meals preferred.
+
+CURRENT INVENTORY:
+PRIORITY USE FIRST: Tomato bruschetta spread (calorie-dense, use sparingly), Frulove Peach Jelly (opened), Vanilla protein pudding (broken package), Coconut flour (expires 1 month), Chocolate protein powder (expires soon), Peach compote (expires July 2026).
+FRESH PRODUCE: Apples, Banana, Lemon, Lime, Strawberries, Blueberries, Parsley, Dill, Basil, Lettuce, Tomatoes, Red bell pepper, Cucumber, Green onions, Garlic, Onion.
+FRIDGE: Lactose-free 1.5% milk, Light mozzarella, Light cream cheese, Cheese strings, Leerdammer sliced cheese, Skyr, Lactose-free 2% Greek yogurt, Eggs, Jamon Serrano, Chicken ham, Ghee.
+FREEZER PROTEINS: Shredded chicken (2-3 portions), Chicken breasts (2.5 portions), Wild salmon fillets (2), White fish (1 portion), Cocktail shrimps, Mushroom stew (3-4 portions), Bolognese sauce (2 portions), Walnuts.
+FREEZER PRODUCE: Roasted red capia pepper (2 packs), Green beans, Edamame, Sweet potato fries (with oil), White potato cubes (no oil, 3-4 portions), Mexican veg mix, Frozen fruits (blueberries, raspberries, strawberries, sour cherries, mango), Chocolate protein ice cream.
+CANNED/JARRED: Chili con carne 800g, Chili beans in spicy sauce, Various beans (borlotti/red/cannellini/baked), Peas, Chickpeas, Sweetcorn, Tomato paste/diced/juice, Pasta sauces (arrabiata/tomato-basil/toscana), Rio Mare couscous salads x2, Tuna with turmeric rice & chickpeas x1, Skipjack tuna in brine x5, Canned salmon, Sardines in olive oil x2, Sardines in tomato sauce x1, Light coconut milk, Pineapple in juice, Sugar-free jams (plum/blueberry), Regular jams (blackberry/fig).
+PANTRY: Quinoa, Bulgur, Brown rice, Oats, Buckwheat, Protein fusilli, Keto pasta (rizzoni/fusilli/tagliatelle), Low-carb toast, Low-carb wraps, Oat/white/coconut flour, Erythritol, Vanilla whey protein powder, Chocolate protein powder, Protein bars, Keto croissants, Almonds, Pecans, Peanut butter, Peanut butter powder, Chia seeds, Flaxseeds, Sesame seeds, Freeze-dried fruits, Seaweed snacks.
+SAUCES & OILS: Chicken stock, Cooking cream 10% and 20%, Thai peanut satay sauce, Gochujang, Teriyaki, Mirin, Soy sauce, Oyster sauce, Olive oil, Sesame oil, Sriracha (fat-free), BBQ sauce (low sugar), Light mayo, Sugar-free ketchup.
+SPICES: Tandoori, TexMex, Baharat, Ras el Hanout, Garam Masala, Seafood blend, BBQ blend, Salt, Pepper, Paprika, Chili, Cinnamon, Cumin, Turmeric, Ginger, Garlic powder, Onion powder, Tajin, and many more.
+
+Always give practical, specific meal ideas with quantities, estimated calories, and protein grams. Be encouraging and friendly.`;
+
+let history = [];
+let apiKey = localStorage.getItem('gemini_key') || '';
+
+function saveKey() {
+  const k = document.getElementById('keyInput').value.trim();
+  if (!k) return;
+  apiKey = k;
+  localStorage.setItem('gemini_key', k);
+  showPlanner();
+}
+
+function showPlanner() {
+  document.getElementById('keyScreen').style.display = 'none';
+  const p = document.getElementById('planner');
+  p.style.display = 'flex';
+  document.getElementById('inputBox').addEventListener('input', () => {
+    document.getElementById('sendBtn').disabled = !document.getElementById('inputBox').value.trim();
+  });
+}
+
+if (apiKey) showPlanner();
+
+function clearChat() {
+  history = [];
+  const msgs = document.getElementById('messages');
+  msgs.innerHTML = '';
+  const welcome = document.createElement('div');
+  welcome.className = 'welcome';
+  welcome.innerHTML = `<div class="welcome__emoji">🍽️</div>
+    <div class="welcome__title">What shall we cook today?</div>
+    <p class="welcome__text">I know your full kitchen inventory and goals.<br>Ask me anything or tap a suggestion below.</p>
+    <div class="suggestions">
+      <button class="suggestion" onclick="sendSuggestion('Create a full day meal plan hitting 160g protein and around 1600 calories')"><span class="suggestion__icon">🌅</span><span>Plan my full day</span></button>
+      <button class="suggestion" onclick="sendSuggestion('Give me a high-protein breakfast idea under 400 calories')"><span class="suggestion__icon">🍳</span><span>High-protein breakfast</span></button>
+      <button class="suggestion" onclick="sendSuggestion('What is a quick easy lunch I can make with what I have?')"><span class="suggestion__icon">🥗</span><span>Quick lunch</span></button>
+      <button class="suggestion" onclick="sendSuggestion('Make me a satisfying dinner using chicken from my freezer')"><span class="suggestion__icon">🍗</span><span>Dinner with chicken</span></button>
+      <button class="suggestion" onclick="sendSuggestion('Create a delicious low-carb dinner using my salmon fillets')"><span class="suggestion__icon">🐟</span><span>Salmon dinner</span></button>
+      <button class="suggestion" onclick="sendSuggestion('Give me 3 high-protein snack ideas under 200 calories each')"><span class="suggestion__icon">🥤</span><span>Protein snacks</span></button>
+      <button class="suggestion" onclick="sendSuggestion('Help me use up my priority expiring items in meals this week')"><span class="suggestion__icon">⚡</span><span>Use expiring items</span></button>
+      <button class="suggestion" onclick="sendSuggestion('What can I batch cook in my multicooker for easy meals this week?')"><span class="suggestion__icon">🥣</span><span>Batch cook ideas</span></button>
+    </div>`;
+  msgs.appendChild(welcome);
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey && window.innerWidth > 600) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function sendSuggestion(text) {
+  document.getElementById('inputBox').value = text;
+  sendMessage();
+}
+
+async function sendMessage() {
+  const box = document.getElementById('inputBox');
+  const text = box.value.trim();
+  if (!text) return;
+
+  box.value = '';
+  box.style.height = 'auto';
+  document.getElementById('sendBtn').disabled = true;
+
+  // Hide welcome
+  const welcome = document.getElementById('welcome');
+  if (welcome) welcome.remove();
+
+  // Add user message
+  history.push({ role: 'user', parts: [{ text }] });
+  appendMessage('user', text);
+
+  // Show loading
+  const loadingEl = document.createElement('div');
+  loadingEl.className = 'loading-msg';
+  loadingEl.innerHTML = `<div class="message__avatar">🥗</div><div class="loading-bubble"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+  document.getElementById('messages').appendChild(loadingEl);
+  scrollToBottom();
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: PROFILE }] },
+          contents: history,
+          generationConfig: { maxOutputTokens: 1200 }
+        })
+      }
+    );
+
+    const data = await res.json();
+    loadingEl.remove();
+
+    if (!res.ok) throw new Error(data?.error?.message || 'HTTP ' + res.status);
+
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+    history.push({ role: 'model', parts: [{ text: reply }] });
+    appendMessage('assistant', reply);
+
+  } catch (err) {
+    loadingEl.remove();
+    appendMessage('assistant', '⚠️ ' + err.message + '\n\nIf your API key is wrong, tap the key icon to update it.');
+  }
+
+  scrollToBottom();
+}
+
+function appendMessage(role, content) {
+  const msgs = document.getElementById('messages');
+  const div = document.createElement('div');
+  div.className = `message message--${role}`;
+
+  const html = content
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
     .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
@@ -37,4 +517,3 @@ function scrollToBottom() {
 </script>
 </body>
 </html>
-
