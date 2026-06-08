@@ -238,8 +238,8 @@ canvas{display:block}
   <div class="kt">Monica's Health App</div>
   <p class="kp">Enter your free Groq API key.<br>Get one at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</p>
   <div class="kr">
-    <input class="kinput" id="keyInput" type="text" placeholder="Paste Groq key (gsk_...)" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter'){var k=this.value.trim();if(k){localStorage.setItem('groq_key',k);location.reload();}}"/>
-    <button class="kbtn" id="startBtn" onclick="var k=document.getElementById('keyInput').value.trim();if(!k){alert('Paste your key first');return;}localStorage.setItem('groq_key',k);location.reload();">Start →</button>
+    <input class="kinput" id="keyInput" type="text" placeholder="Paste Groq key (gsk_...)" autocomplete="off" autocorrect="off" autocapitalize="off"/>
+    <button class="kbtn" id="startBtn" onclick="saveKey()">Start →</button>
   </div>
   <p class="knote">Saved only in this browser, sent directly to Groq.</p>
 </div>
@@ -453,9 +453,11 @@ function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
 // ─── KEY ─────────────────────────────────────────────────────────────────────
 function saveKey() {
-  const k = document.getElementById('keyInput').value.trim();
+  var inp = document.getElementById('keyInput');
+  var k = inp ? inp.value.trim() : '';
   if (!k) { alert('Please paste your Groq API key first'); return; }
-  apiKey = k; localStorage.setItem('groq_key', k);
+  apiKey = k;
+  try { localStorage.setItem('groq_key', k); } catch(e) {}
   showMain();
 }
 function changeKey() {
@@ -468,15 +470,17 @@ function showMain() {
   document.getElementById('keyScreen').style.display = 'none';
   document.getElementById('main').style.display = 'flex';
   renderAll();
-  document.getElementById('inputBox').addEventListener('input', () => {
-    document.getElementById('sendBtn').disabled = !document.getElementById('inputBox').value.trim();
+  var ib = document.getElementById('inputBox');
+  if (ib) ib.addEventListener('input', function() {
+    document.getElementById('sendBtn').disabled = !ib.value.trim();
   });
-  // Set today's date on body inputs
-  const t = today();
-  document.getElementById('weightDate').value = t;
-  document.getElementById('waistDate').value = t;
+  var t = today();
+  var wd = document.getElementById('weightDate');
+  var wad = document.getElementById('waistDate');
+  if (wd) wd.value = t;
+  if (wad) wad.value = t;
 }
-if (apiKey) showMain();
+if (apiKey) { showMain(); }
 
 function renderAll() {
   renderWater(); renderTodayBar(); renderLog(); renderInv();
