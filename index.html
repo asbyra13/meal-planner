@@ -124,6 +124,7 @@
     font-family: 'DM Sans', sans-serif;
   }
   .reset-btn:hover { color: var(--gold); border-color: var(--gold); }
+  .header__btns { display: flex; gap: 6px; }
 
   /* STATS */
   .stats {
@@ -315,7 +316,10 @@
           <div class="header__sub">1,600 cal · 160g+ protein · Low-carb</div>
         </div>
       </div>
-      <button class="reset-btn" onclick="clearChat()">New chat</button>
+      <div class="header__btns">
+        <button class="reset-btn" onclick="changeKey()">🔑 Key</button>
+        <button class="reset-btn" onclick="clearChat()">New chat</button>
+      </div>
     </div>
 
     <div class="stats">
@@ -375,13 +379,21 @@ SPICES: Tandoori, TexMex, Baharat, Ras el Hanout, Garam Masala, Seafood blend, B
 Always give practical, specific meal ideas with quantities, estimated calories, and protein grams. Be encouraging and friendly.`;
 
 let history = [];
-let apiKey = localStorage.getItem('gemini_key') || '';
+let apiKey = localStorage.getItem('groq_key') || '';
+
+function changeKey() {
+  localStorage.removeItem('groq_key');
+  apiKey = '';
+  document.getElementById('planner').style.display = 'none';
+  document.getElementById('keyScreen').style.display = 'flex';
+  document.getElementById('keyInput').value = '';
+}
 
 function saveKey() {
   const k = document.getElementById('keyInput').value.trim();
   if (!k) return;
   apiKey = k;
-  localStorage.setItem('gemini_key', k);
+  localStorage.setItem('groq_key', k);
   showPlanner();
 }
 
@@ -460,25 +472,30 @@ async function sendMessage() {
   scrollToBottom();
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: PROFILE }] },
-          contents: history,
-          generationConfig: { maxOutputTokens: 1200 }
-        })
-      }
-    );
+    const groqMessages = [
+      { role: 'system', content: PROFILE },
+      ...history.map(m => ({ role: m.role === 'model' ? 'assistant' : m.role, content: m.parts[0].text }))
+    ];
+
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: groqMessages,
+        max_tokens: 1200
+      })
+    });
 
     const data = await res.json();
     loadingEl.remove();
 
     if (!res.ok) throw new Error(data?.error?.message || 'HTTP ' + res.status);
 
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No response generated.';
+    const reply = data?.choices?.[0]?.message?.content || 'No response generated.';
     history.push({ role: 'model', parts: [{ text: reply }] });
     appendMessage('assistant', reply);
 
@@ -517,3 +534,15 @@ function scrollToBottom() {
 </script>
 </body>
 </html>
+Done
+Copy everything above starting from <!DOCTYPE html> all the way to </html> at the very end.
+
+Then:
+
+GitHub → meal-planner → index.html → pencil icon
+Cmd+A → Delete → Cmd+V
+Commit changes → Commit changes
+Wait 2 minutes, then open the link on your phone and enter your Groq key fresh!
+
+
+
