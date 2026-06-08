@@ -238,8 +238,8 @@ canvas{display:block}
   <div class="kt">Monica's Health App</div>
   <p class="kp">Enter your free Groq API key.<br>Get one at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</p>
   <div class="kr">
-    <input class="kinput" id="keyInput" type="password" placeholder="Paste Groq key (gsk_...)"/>
-    <button class="kbtn" onclick="saveKey()">Start →</button>
+    <input class="kinput" id="keyInput" type="text" placeholder="Paste Groq key (gsk_...)" autocomplete="off" autocorrect="off" autocapitalize="off"/>
+    <button class="kbtn" id="startBtn">Start →</button>
   </div>
   <p class="knote">Saved only in this browser, sent directly to Groq.</p>
 </div>
@@ -454,7 +454,7 @@ function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 // ─── KEY ─────────────────────────────────────────────────────────────────────
 function saveKey() {
   const k = document.getElementById('keyInput').value.trim();
-  if (!k) return;
+  if (!k) { alert('Please paste your Groq API key first'); return; }
   apiKey = k; localStorage.setItem('groq_key', k);
   showMain();
 }
@@ -848,6 +848,13 @@ function addMsg(role, content, showLogBtn) {
 }
 function scrollBot() { const m=document.getElementById('messages'); m.scrollTop=m.scrollHeight; }
 
+// ─── KEY BUTTON ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  var btn = document.getElementById('startBtn');
+  if (btn) btn.addEventListener('click', saveKey);
+  var input = document.getElementById('keyInput');
+  if (input) input.addEventListener('keydown', function(e){ if(e.key==='Enter') saveKey(); });
+});
 // ─── MODALS ──────────────────────────────────────────────────────────────────
 function closeM(id) { document.getElementById(id).classList.remove('open'); }
 ['addItemModal','addShopModal','addRecModal','addLogModal'].forEach(id => {
