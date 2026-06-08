@@ -238,8 +238,8 @@ canvas{display:block}
   <div class="kt">Monica's Health App</div>
   <p class="kp">Enter your free Groq API key.<br>Get one at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</p>
   <div class="kr">
-    <input class="kinput" id="keyInput" type="text" placeholder="Paste Groq key (gsk_...)" autocomplete="off" autocorrect="off" autocapitalize="off"/>
-    <button class="kbtn" id="startBtn">Start →</button>
+    <input class="kinput" id="keyInput" type="text" placeholder="Paste Groq key (gsk_...)" autocomplete="off" autocorrect="off" autocapitalize="off" onkeydown="if(event.key==='Enter'){var k=this.value.trim();if(k){localStorage.setItem('groq_key',k);location.reload();}}"/>
+    <button class="kbtn" id="startBtn" onclick="var k=document.getElementById('keyInput').value.trim();if(!k){alert('Paste your key first');return;}localStorage.setItem('groq_key',k);location.reload();">Start →</button>
   </div>
   <p class="knote">Saved only in this browser, sent directly to Groq.</p>
 </div>
