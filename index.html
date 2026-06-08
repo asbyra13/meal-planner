@@ -769,7 +769,7 @@ function renderStats() {
     const wt = document.createElement('div'); wt.className = 'week-card';
     const first = weightLog[0], last = weightLog[weightLog.length-1];
     const diff = (last.val - first.val).toFixed(1);
-    wt.innerHTML = `<div class="week-card-title">Weight Progress</div><div style="text-align:center;padding:8px 0"><div style="font-size:28px;font-weight:600;color:${parseFloat(diff)<0?'var(--green)':'var(--red)';}">${parseFloat(diff)>0?'+':''}${diff} kg</div><div style="font-size:12px;color:var(--muted);margin-top:4px">since ${first.date}</div><div style="font-size:13px;color:var(--dim);margin-top:8px">From ${first.val} kg → ${last.val} kg</div></div>`;
+    wt.innerHTML = `<div class="week-card-title">Weight Progress</div><div style="text-align:center;padding:8px 0"><div style="font-size:28px;font-weight:600;color:${parseFloat(diff)<0?'var(--green)':'var(--red)'}">${parseFloat(diff)>0?'+':''}${diff} kg</div><div style="font-size:12px;color:var(--muted);margin-top:4px">since ${first.date}</div><div style="font-size:13px;color:var(--dim);margin-top:8px">From ${first.val} kg → ${last.val} kg</div></div>`;
     sb.appendChild(wt);
   }
 }
