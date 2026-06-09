@@ -6,6 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Monica's Health">
+<meta name="theme-color" content="#0e0e0e">
 <title>Monica's Health App</title>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -252,7 +253,7 @@ canvas{display:block}
       <div><div class="htitle">Monica's Health</div><div class="hsub">1,600 cal · 160g+ protein · Low-carb</div></div>
     </div>
     <div class="hbtns">
-      <button class="hbtn" onclick="changeKey()">🔑</button>
+      <button class="hbtn" onclick="changeKey()" aria-label="Change API key">🔑</button>
       <button class="hbtn" onclick="clearChat()">New chat</button>
     </div>
   </div>
@@ -425,106 +426,171 @@ const DINV = {
   '🌿 Spices':['Tandoori','TexMex','Baharat','Ras el Hanout','Garam Masala','Seafood blend','Salt','Pepper','Paprika','Chili','Cinnamon','Cumin','Turmeric','Ginger','Garlic powder','Onion powder','Tajin']
 };
 
-// ─── STATE ───────────────────────────────────────────────────────────────────
-let apiKey = localStorage.getItem('groq_key') || '';
-let chatHistory = [];
-let water = parseInt(localStorage.getItem('water') || '0');
-let logDateOffset = 0;
-let inv = JSON.parse(localStorage.getItem('inv') || 'null') || JSON.parse(JSON.stringify(DINV));
-let foodLog = JSON.parse(localStorage.getItem('foodLog') || '{}'); // {dateStr: [{name,cal,prot}]}
-let weightLog = JSON.parse(localStorage.getItem('weightLog') || '[]'); // [{date,val}]
-let waistLog = JSON.parse(localStorage.getItem('waistLog') || '[]'); // [{date,val}]
-let shopping = JSON.parse(localStorage.getItem('shopping') || '[]'); // [{name,checked}]
-let recipes = JSON.parse(localStorage.getItem('recipes') || '[]'); // [{name,macros,body}]
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+// OPTIONAL: to skip the key screen on THIS computer, paste your Groq key between
+// the quotes below (e.g. 'gsk_xxx'). Leave empty to be asked once in the browser.
+// ⚠️ If this file is in a PUBLIC GitHub repo, do NOT put the key here — keep the
+// repo private or leave this empty, otherwise the key becomes visible to anyone.
+const HARDCODED_KEY = '';
+const API_URL   = 'https://api.groq.com/openai/v1/chat/completions';
+const MODEL     = 'llama-3.3-70b-versatile';
+const CAL_GOAL  = 1600, PROT_GOAL = 160, WATER_GOAL = 8;
+
+// ─── STORAGE HELPERS ─────────────────────────────────────────────────────────
+function lsGet(key, def) {
+  try { const v = localStorage.getItem(key); return v === null ? def : v; }
+  catch (e) { return def; }
+}
+function lsGetJSON(key, def) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; }
+  catch (e) { return def; }
+}
+function lsSetRaw(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
-function today() { return new Date().toISOString().slice(0,10); }
 function dateStr(offset) {
   const d = new Date(); d.setDate(d.getDate() + offset);
   return d.toISOString().slice(0,10);
 }
+function today() { return dateStr(0); }
 function friendlyDate(offset) {
   if (offset === 0) return 'Today';
   if (offset === -1) return 'Yesterday';
   const d = new Date(); d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('en-GB', {weekday:'short', day:'numeric', month:'short'});
+  return d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short' });
 }
-function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+function clampPct(v, goal) { return Math.min(100, Math.round(v / goal * 100)); }
+function debounce(fn, ms) { let t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); }; }
+function sumCal(log) { return log.reduce((s,e)=>s+(e.cal||0),0); }
+function sumProt(log) { return log.reduce((s,e)=>s+(e.prot||0),0); }
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let apiKey      = lsGet('groq_key', '') || HARDCODED_KEY;
+let chatHistory = lsGetJSON('chatHistory', []);
+let logDateOffset = 0;
+let inv       = lsGetJSON('inv', null) || JSON.parse(JSON.stringify(DINV));
+let foodLog   = lsGetJSON('foodLog', {});          // {dateStr: [{name,cal,prot}]}
+let weightLog = lsGetJSON('weightLog', []);        // [{date,val}]
+let waistLog  = lsGetJSON('waistLog', []);         // [{date,val}]
+let shopping  = lsGetJSON('shopping', []);         // [{name,checked}]
+let recipes   = lsGetJSON('recipes', []);          // [{name,macros,body}]
+let waterByDate = lsGetJSON('waterByDate', null);  // {dateStr: count}
+
+// migrate old single-number water -> per-day, so water resets each day
+if (waterByDate === null) {
+  waterByDate = {};
+  const old = parseInt(lsGet('water', '0'), 10);
+  if (old > 0) waterByDate[today()] = old;
+  save('waterByDate', waterByDate);
+}
 
 // ─── KEY ─────────────────────────────────────────────────────────────────────
 function saveKey() {
-  var inp = document.getElementById('keyInput');
-  var k = inp ? inp.value.trim() : '';
+  const inp = document.getElementById('keyInput');
+  const k = inp ? inp.value.trim() : '';
   if (!k) { alert('Please paste your Groq API key first'); return; }
-  apiKey = k;
-  try { localStorage.setItem('groq_key', k); } catch(e) {}
+  apiKey = k; lsSetRaw('groq_key', k);
   showMain();
 }
 function changeKey() {
-  localStorage.removeItem('groq_key'); apiKey = '';
+  try { localStorage.removeItem('groq_key'); } catch (e) {}
+  apiKey = '';
   document.getElementById('main').style.display = 'none';
   document.getElementById('keyScreen').style.display = 'flex';
-  document.getElementById('keyInput').value = '';
+  const ki = document.getElementById('keyInput'); if (ki) ki.value = '';
 }
 function showMain() {
   document.getElementById('keyScreen').style.display = 'none';
   document.getElementById('main').style.display = 'flex';
   renderAll();
-  var ib = document.getElementById('inputBox');
-  if (ib) ib.addEventListener('input', function() {
-    document.getElementById('sendBtn').disabled = !ib.value.trim();
-  });
-  var t = today();
-  var wd = document.getElementById('weightDate');
-  var wad = document.getElementById('waistDate');
-  if (wd) wd.value = t;
-  if (wad) wad.value = t;
+  renderChat();
+  const t = today();
+  const wd = document.getElementById('weightDate'); if (wd) wd.value = t;
+  const wad = document.getElementById('waistDate'); if (wad) wad.value = t;
 }
-if (apiKey) { showMain(); }
 
 function renderAll() {
   renderWater(); renderTodayBar(); renderLog(); renderInv();
   renderShop(); renderRec(); renderStats(); renderBody();
 }
 
-// ─── WATER ───────────────────────────────────────────────────────────────────
+// ─── GROQ ────────────────────────────────────────────────────────────────────
+async function groqChat(messages, maxTokens) {
+  if (!apiKey) throw new Error('No API key set. Tap 🔑 to add your Groq key.');
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+apiKey },
+      body: JSON.stringify({ model: MODEL, messages, max_tokens: maxTokens }),
+      signal: ctrl.signal
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error?.message || ('HTTP ' + res.status));
+    return data?.choices?.[0]?.message?.content || '';
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Request timed out — try again.');
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+// ─── WATER (per day) ─────────────────────────────────────────────────────────
+function waterToday() { return waterByDate[today()] || 0; }
+function setWater(n) {
+  waterByDate[today()] = Math.max(0, n);
+  save('waterByDate', waterByDate);
+  renderWater(); renderTodayBar();
+}
+function resetWater() { setWater(0); }
 function renderWater() {
-  const c = document.getElementById('wg'); c.innerHTML = '';
-  for (let i = 0; i < 8; i++) {
+  const c = document.getElementById('wg'); if (!c) return;
+  c.innerHTML = ''; const w = waterToday();
+  for (let i = 0; i < WATER_GOAL; i++) {
     const g = document.createElement('span');
-    g.className = 'glass' + (i < water ? ' on' : '');
+    g.className = 'glass' + (i < w ? ' on' : '');
     g.textContent = '💧';
-    g.onclick = () => { water = i < water ? i : i+1; localStorage.setItem('water', water); renderWater(); renderTodayBar(); };
+    g.setAttribute('role', 'button');
+    g.setAttribute('aria-label', (i+1) + ' glasses');
+    g.onclick = () => setWater(i < w ? i : i + 1);
     c.appendChild(g);
   }
 }
-function resetWater() { water = 0; localStorage.setItem('water', 0); renderWater(); renderTodayBar(); }
+function waterStreak() {
+  let s = 0;
+  for (let i = 0; i >= -90; i--) {
+    if ((waterByDate[dateStr(i)] || 0) >= WATER_GOAL) s++;
+    else if (i < 0) break;
+  }
+  return s;
+}
 
 // ─── TODAY BAR ───────────────────────────────────────────────────────────────
 function getTodayLog() { return foodLog[today()] || []; }
-function todayCal() { return getTodayLog().reduce((s,e) => s+(e.cal||0), 0); }
-function todayProt() { return getTodayLog().reduce((s,e) => s+(e.prot||0), 0); }
+function todayCal()  { return sumCal(getTodayLog()); }
+function todayProt() { return sumProt(getTodayLog()); }
 function getStreak() {
   let streak = 0;
-  for (let i = 0; i >= -60; i--) {
-    const log = foodLog[dateStr(i)] || [];
-    const prot = log.reduce((s,e)=>s+(e.prot||0),0);
-    if (prot >= 160) streak++;
+  for (let i = 0; i >= -90; i--) {
+    if (sumProt(foodLog[dateStr(i)] || []) >= PROT_GOAL) streak++;
     else if (i < 0) break;
   }
   return streak;
 }
 function renderTodayBar() {
-  const cal = todayCal(), prot = todayProt(), streak = getStreak();
-  const calPct = Math.min(100, Math.round(cal/1600*100));
-  const protPct = Math.min(100, Math.round(prot/160*100));
-  document.getElementById('todayBar').innerHTML = `
-    <div class="tstat"><div class="tsl">Calories</div><div class="tsv ${cal>1700?'warn':cal>1200?'good':''}">${cal} / 1600</div></div>
-    <div class="tstat"><div class="tsl">Protein</div><div class="tsv ${prot>=160?'good':prot>120?'':''}">${prot}g / 160g</div></div>
-    <div class="tstat"><div class="tsl">Meals logged</div><div class="tsv">${getTodayLog().length}</div></div>
-    <div class="tstat"><div class="tsl">Water</div><div class="tsv ${water>=8?'good':''}">${water}/8 💧</div></div>
-    ${streak>0?`<div class="streak-badge"><div class="tsl">🔥 Protein streak</div><div class="tsv">${streak} day${streak>1?'s':''}</div></div>`:''}
-  `;
+  const log = getTodayLog();
+  const cal = sumCal(log), prot = sumProt(log), w = waterToday(), streak = getStreak();
+  document.getElementById('todayBar').innerHTML =
+    `<div class="tstat"><div class="tsl">Calories</div><div class="tsv ${cal>CAL_GOAL+100?'warn':cal>1200?'good':''}">${cal} / ${CAL_GOAL}</div></div>
+     <div class="tstat"><div class="tsl">Protein</div><div class="tsv ${prot>=PROT_GOAL?'good':''}">${prot}g / ${PROT_GOAL}g</div></div>
+     <div class="tstat"><div class="tsl">Meals logged</div><div class="tsv">${log.length}</div></div>
+     <div class="tstat"><div class="tsl">Water</div><div class="tsv ${w>=WATER_GOAL?'good':''}">${w}/${WATER_GOAL} 💧</div></div>
+     ${streak>0?`<div class="streak-badge"><div class="tsl">🔥 Protein streak</div><div class="tsv">${streak} day${streak>1?'s':''}</div></div>`:''}`;
 }
 
 // ─── TABS ────────────────────────────────────────────────────────────────────
@@ -533,6 +599,7 @@ function switchTab(n) {
     document.getElementById('tab-'+t).classList.toggle('active', t===n);
     document.getElementById('panel-'+t).classList.toggle('active', t===n);
   });
+  if (n === 'body') renderBody();   // charts need a visible panel to size correctly
 }
 
 // ─── FOOD LOG ────────────────────────────────────────────────────────────────
@@ -540,105 +607,107 @@ function renderLog() {
   const ds = dateStr(logDateOffset);
   const log = foodLog[ds] || [];
   document.getElementById('logDateLabel').textContent = friendlyDate(logDateOffset);
-  const cal = log.reduce((s,e)=>s+(e.cal||0),0);
-  const prot = log.reduce((s,e)=>s+(e.prot||0),0);
-  const calPct = Math.min(100,Math.round(cal/1600*100));
-  const protPct = Math.min(100,Math.round(prot/160*100));
+  const cal = sumCal(log), prot = sumProt(log);
+  const calPct = clampPct(cal, CAL_GOAL), protPct = clampPct(prot, PROT_GOAL);
   document.getElementById('logSummary').innerHTML = `
     <div class="log-summary-row">
-      <div class="log-macro"><div class="log-macro-val" style="color:${cal>1700?'var(--red)':'var(--gold)'}">${cal}</div><div class="log-macro-lbl">Calories</div><div class="log-macro-sub">/ 1,600</div></div>
-      <div class="log-macro"><div class="log-macro-val" style="color:${prot>=160?'var(--green)':'var(--gold)'}">${prot}g</div><div class="log-macro-lbl">Protein</div><div class="log-macro-sub">/ 160g</div></div>
-      <div class="log-macro"><div class="log-macro-val">${1600-cal>0?1600-cal:0}</div><div class="log-macro-lbl">Cal left</div><div class="log-macro-sub">${160-prot>0?160-prot+'g':' done ✓'} prot left</div></div>
+      <div class="log-macro"><div class="log-macro-val" style="color:${cal>CAL_GOAL+100?'var(--red)':'var(--gold)'}">${cal}</div><div class="log-macro-lbl">Calories</div><div class="log-macro-sub">/ 1,600</div></div>
+      <div class="log-macro"><div class="log-macro-val" style="color:${prot>=PROT_GOAL?'var(--green)':'var(--gold)'}">${prot}g</div><div class="log-macro-lbl">Protein</div><div class="log-macro-sub">/ 160g</div></div>
+      <div class="log-macro"><div class="log-macro-val">${Math.max(0,CAL_GOAL-cal)}</div><div class="log-macro-lbl">Cal left</div><div class="log-macro-sub">${PROT_GOAL-prot>0?(PROT_GOAL-prot)+'g':' done ✓'} prot left</div></div>
     </div>`;
   document.getElementById('logProgress').innerHTML = `
-    <div class="prog-row"><span class="prog-label">Calories</span><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${calPct}%;background:${cal>1700?'var(--red)':'linear-gradient(90deg,var(--gold),var(--goldl))'}"></div></div><span class="prog-pct">${calPct}%</span></div>
-    <div class="prog-row"><span class="prog-label">Protein</span><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${protPct}%;background:${prot>=160?'var(--green)':'linear-gradient(90deg,var(--gold),var(--goldl))'}"></div></div><span class="prog-pct">${protPct}%</span></div>`;
-  const entriesEl = document.getElementById('logEntries');
-  entriesEl.innerHTML = '';
-  if (!log.length) { entriesEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Nothing logged yet.<br>Tell me what you ate or tap + Add Food!</div>'; return; }
-  log.forEach((e,idx) => {
+    <div class="prog-row"><span class="prog-label">Calories</span><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${calPct}%;background:${cal>CAL_GOAL+100?'var(--red)':'linear-gradient(90deg,var(--gold),var(--goldl))'}"></div></div><span class="prog-pct">${calPct}%</span></div>
+    <div class="prog-row"><span class="prog-label">Protein</span><div class="prog-bar-bg"><div class="prog-bar-fill" style="width:${protPct}%;background:${prot>=PROT_GOAL?'var(--green)':'linear-gradient(90deg,var(--gold),var(--goldl))'}"></div></div><span class="prog-pct">${protPct}%</span></div>`;
+  const el = document.getElementById('logEntries'); el.innerHTML = '';
+  if (!log.length) { el.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Nothing logged yet.<br>Tell me what you ate or tap + Add Food!</div>'; return; }
+  log.forEach((e, idx) => {
+    const macros = (e.cal?e.cal+' kcal':'') + (e.prot?' · '+e.prot+'g protein':'');
     const d = document.createElement('div'); d.className = 'log-entry';
-    d.innerHTML = `<div class="log-entry-left"><div class="log-entry-name">${e.name}</div><div class="log-entry-macros">${e.cal?e.cal+' kcal':''} ${e.prot?'· '+e.prot+'g protein':''}</div></div><button class="log-entry-del" onclick="delLogEntry('${ds}',${idx})">×</button>`;
-    entriesEl.appendChild(d);
+    d.innerHTML = `<div class="log-entry-left"><div class="log-entry-name">${esc(e.name)}</div><div class="log-entry-macros">${esc(macros)}</div></div><button class="log-entry-del" data-act="delLog" data-ds="${esc(ds)}" data-idx="${idx}" aria-label="Delete">×</button>`;
+    el.appendChild(d);
   });
 }
-function delLogEntry(ds, idx) { foodLog[ds].splice(idx,1); save('foodLog',foodLog); renderLog(); renderTodayBar(); }
-function openLogModal() { document.getElementById('addLogModal').classList.add('open'); }
+function delLogEntry(ds, idx) {
+  if (!foodLog[ds]) return;
+  foodLog[ds].splice(idx,1); save('foodLog',foodLog);
+  renderLog(); renderTodayBar(); renderStats();
+}
+function openLogModal() { openModal('addLogModal'); }
 async function addLogItem() {
   const name = document.getElementById('logItemName').value.trim();
   if (!name) return;
-  let cal = parseInt(document.getElementById('logItemCal').value) || null;
-  let prot = parseInt(document.getElementById('logItemProt').value) || null;
+  let cal  = parseInt(document.getElementById('logItemCal').value, 10);
+  let prot = parseInt(document.getElementById('logItemProt').value, 10);
+  cal  = isNaN(cal)  ? null : cal;
+  prot = isNaN(prot) ? null : prot;
   closeM('addLogModal');
   ['logItemName','logItemCal','logItemProt'].forEach(id => document.getElementById(id).value = '');
-  if (!cal || !prot) {
-    // Ask AI to estimate
+  if ((cal === null || prot === null) && apiKey) {
     try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'system',content:'You are a nutrition expert. Respond ONLY with JSON like {"cal":320,"prot":28}. No other text.'},{role:'user',content:'Estimate calories and protein for: '+name}],max_tokens:50})});
-      const data = await res.json();
-      const txt = data?.choices?.[0]?.message?.content || '{}';
-      const clean = txt.replace(/```json|```/g,'').trim();
-      const est = JSON.parse(clean);
-      if (!cal) cal = est.cal || 0;
-      if (!prot) prot = est.prot || 0;
-    } catch(e) {}
+      const txt = await groqChat([
+        { role:'system', content:'You are a nutrition expert. Respond ONLY with JSON like {"cal":320,"prot":28}. No other text.' },
+        { role:'user',   content:'Estimate calories and protein for: ' + name }
+      ], 60);
+      const est = JSON.parse(txt.replace(/```json|```/g,'').trim());
+      if (cal  === null) cal  = Math.round(est.cal)  || 0;
+      if (prot === null) prot = Math.round(est.prot) || 0;
+    } catch (e) {}
   }
   const ds = dateStr(logDateOffset);
   if (!foodLog[ds]) foodLog[ds] = [];
-  foodLog[ds].push({name, cal: cal||0, prot: prot||0});
+  foodLog[ds].push({ name, cal: cal||0, prot: prot||0 });
   save('foodLog', foodLog);
-  renderLog(); renderTodayBar();
+  renderLog(); renderTodayBar(); renderStats();
 }
 
 // ─── BODY TRACKING ───────────────────────────────────────────────────────────
 function addWeight() {
-  const val = parseFloat(document.getElementById('weightInput').value);
+  const val  = parseFloat(document.getElementById('weightInput').value);
   const date = document.getElementById('weightDate').value || today();
-  if (!val) return;
-  weightLog.push({date, val});
+  if (isNaN(val)) return;
+  weightLog = weightLog.filter(e => e.date !== date);   // one entry per day
+  weightLog.push({ date, val });
   weightLog.sort((a,b) => a.date.localeCompare(b.date));
   save('weightLog', weightLog);
+  document.getElementById('weightInput').value = '';
   renderBody();
 }
 function addWaist() {
-  const val = parseFloat(document.getElementById('waistInput').value);
+  const val  = parseFloat(document.getElementById('waistInput').value);
   const date = document.getElementById('waistDate').value || today();
-  if (!val) return;
-  waistLog.push({date, val});
+  if (isNaN(val)) return;
+  waistLog = waistLog.filter(e => e.date !== date);
+  waistLog.push({ date, val });
   waistLog.sort((a,b) => a.date.localeCompare(b.date));
   save('waistLog', waistLog);
+  document.getElementById('waistInput').value = '';
   renderBody();
 }
 function drawChart(canvasId, data, color) {
   const canvas = document.getElementById(canvasId);
-  if (!data.length) { canvas.style.display='none'; return; }
+  if (!canvas) return;
+  if (!data.length) { canvas.style.display = 'none'; return; }
   canvas.style.display = 'block';
   const W = canvas.parentElement.clientWidth || 300;
   canvas.width = Math.max(W, data.length * 40);
   canvas.height = 120;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  const vals = data.map(d=>d.val);
+  const vals = data.map(d => d.val);
   const minV = Math.min(...vals) - 1, maxV = Math.max(...vals) + 1;
   const range = maxV - minV || 1;
-  const pad = 20;
-  const W2 = canvas.width, H2 = canvas.height;
+  const pad = 20, W2 = canvas.width, H2 = canvas.height;
   const xStep = (W2 - pad*2) / Math.max(data.length-1, 1);
-  // Grid lines
   ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = 1;
-  for (let i=0;i<3;i++) { const y=pad+(H2-pad*2)*i/2; ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(W2-pad,y);ctx.stroke(); }
-  // Line
+  for (let i=0;i<3;i++) { const y=pad+(H2-pad*2)*i/2; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W2-pad,y); ctx.stroke(); }
   ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round';
   data.forEach((d,i) => {
-    const x = pad + i*xStep;
-    const y = pad + (H2-pad*2) * (1-(d.val-minV)/range);
+    const x = pad + i*xStep, y = pad + (H2-pad*2) * (1-(d.val-minV)/range);
     i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
   });
   ctx.stroke();
-  // Dots + labels
   data.forEach((d,i) => {
-    const x = pad + i*xStep;
-    const y = pad + (H2-pad*2) * (1-(d.val-minV)/range);
+    const x = pad + i*xStep, y = pad + (H2-pad*2) * (1-(d.val-minV)/range);
     ctx.beginPath(); ctx.fillStyle = color; ctx.arc(x,y,4,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#888'; ctx.font = '9px DM Sans'; ctx.textAlign = 'center';
     ctx.fillText(d.val, x, y-8);
@@ -651,21 +720,24 @@ function renderLatest(data, elId, unit) {
   const prev = data.length>1 ? data[data.length-2] : null;
   const diff = prev ? (last.val - prev.val).toFixed(1) : null;
   const cls = diff ? (parseFloat(diff)<0?'down':'up') : '';
-  el.innerHTML = `<div class="latest-num">${last.val}<span style="font-size:16px;color:var(--muted)"> ${unit}</span></div><div class="latest-lbl">${last.date}</div>${diff?'<div class="latest-change '+cls+'">'+(parseFloat(diff)>0?'+':'')+diff+' '+unit+' from last</div>':''}`;
+  el.innerHTML = `<div class="latest-num">${last.val}<span style="font-size:16px;color:var(--muted)"> ${unit}</span></div><div class="latest-lbl">${esc(last.date)}</div>${diff?'<div class="latest-change '+cls+'">'+(parseFloat(diff)>0?'+':'')+diff+' '+unit+' from last</div>':''}`;
 }
 function renderBody() {
   renderLatest(weightLog, 'weightLatest', 'kg');
-  renderLatest(waistLog, 'waistLatest', 'cm');
+  renderLatest(waistLog,  'waistLatest', 'cm');
   drawChart('weightChart', weightLog.slice(-20), '#c8a96e');
-  drawChart('waistChart', waistLog.slice(-20), '#5599e0');
-  // Histories
-  const wh = document.getElementById('weightHistory');
-  wh.innerHTML = weightLog.slice().reverse().slice(0,5).map((e,i,arr) => `<div class="track-entry"><span>${e.date}</span><div style="display:flex;align-items:center;gap:8px"><span class="track-entry-val">${e.val} kg</span><button class="track-entry-del" onclick="delWeight(${weightLog.length-1-i})">×</button></div></div>`).join('');
-  const wah = document.getElementById('waistHistory');
-  wah.innerHTML = waistLog.slice().reverse().slice(0,5).map((e,i) => `<div class="track-entry"><span>${e.date}</span><div style="display:flex;align-items:center;gap:8px"><span class="track-entry-val">${e.val} cm</span><button class="track-entry-del" onclick="delWaist(${waistLog.length-1-i})">×</button></div></div>`).join('');
+  drawChart('waistChart',  waistLog.slice(-20), '#5599e0');
+  document.getElementById('weightHistory').innerHTML = weightLog.slice().reverse().slice(0,5).map((e,i) => {
+    const idx = weightLog.length-1-i;
+    return `<div class="track-entry"><span>${esc(e.date)}</span><div style="display:flex;align-items:center;gap:8px"><span class="track-entry-val">${e.val} kg</span><button class="track-entry-del" data-act="delWeight" data-idx="${idx}" aria-label="Delete">×</button></div></div>`;
+  }).join('');
+  document.getElementById('waistHistory').innerHTML = waistLog.slice().reverse().slice(0,5).map((e,i) => {
+    const idx = waistLog.length-1-i;
+    return `<div class="track-entry"><span>${esc(e.date)}</span><div style="display:flex;align-items:center;gap:8px"><span class="track-entry-val">${e.val} cm</span><button class="track-entry-del" data-act="delWaist" data-idx="${idx}" aria-label="Delete">×</button></div></div>`;
+  }).join('');
 }
 function delWeight(idx) { weightLog.splice(idx,1); save('weightLog',weightLog); renderBody(); }
-function delWaist(idx) { waistLog.splice(idx,1); save('waistLog',waistLog); renderBody(); }
+function delWaist(idx)  { waistLog.splice(idx,1);  save('waistLog',waistLog);  renderBody(); }
 
 // ─── INVENTORY ───────────────────────────────────────────────────────────────
 function saveInv() { save('inv', inv); }
@@ -675,17 +747,18 @@ function renderInv() {
   for (const [cat, items] of Object.entries(inv)) {
     if (!items.length) continue;
     const s = document.createElement('div'); s.className = 'isec';
-    s.innerHTML = '<div class="isec-title">'+cat+' ('+items.length+')</div>';
-    items.forEach((item,idx) => {
+    s.innerHTML = '<div class="isec-title">'+esc(cat)+' ('+items.length+')</div>';
+    items.forEach((item, idx) => {
       const r = document.createElement('div'); r.className = 'iitem';
-      r.innerHTML = '<span class="iname'+(cat==='🚨 Priority Use'?' pri':'')+'">'+item+'</span><button class="ibtn del" onclick="delItem(\''+cat.replace(/'/g,"\\'")+"',"+idx+')">Used ✓</button>';
+      r.innerHTML = '<span class="iname'+(cat==='🚨 Priority Use'?' pri':'')+'">'+esc(item)+'</span>'
+        + '<button class="ibtn del" data-act="delItem" data-cat="'+esc(cat)+'" data-idx="'+idx+'">Used ✓</button>';
       s.appendChild(r);
     });
     c.appendChild(s);
   }
 }
-function delItem(cat,idx) { inv[cat].splice(idx,1); saveInv(); renderInv(); renderTodayBar(); }
-function openAddItem() { document.getElementById('addItemModal').classList.add('open'); }
+function delItem(cat, idx) { if (!inv[cat]) return; inv[cat].splice(idx,1); saveInv(); renderInv(); renderTodayBar(); }
+function openAddItem() { openModal('addItemModal'); }
 function addItem() {
   const n = document.getElementById('newItemName').value.trim();
   const cat = document.getElementById('newItemCat').value;
@@ -699,19 +772,19 @@ function addItem() {
 function renderShop() {
   const c = document.getElementById('shopBody'); c.innerHTML = '';
   if (!shopping.length) { c.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">Your shopping list is empty.<br>Ask me in chat what to buy!</div>'; return; }
-  shopping.forEach((item,idx) => {
+  shopping.forEach((item, idx) => {
     const d = document.createElement('div'); d.className = 'shop-item';
-    d.innerHTML = `<div class="shop-check ${item.checked?'checked':''}" onclick="toggleShop(${idx})">${item.checked?'✓':''}</div><span class="shop-name ${item.checked?'checked':''}">${item.name}</span><button class="shop-del" onclick="delShop(${idx})">×</button>`;
+    d.innerHTML = `<div class="shop-check ${item.checked?'checked':''}" data-act="toggleShop" data-idx="${idx}" role="checkbox" aria-checked="${!!item.checked}">${item.checked?'✓':''}</div><span class="shop-name ${item.checked?'checked':''}">${esc(item.name)}</span><button class="shop-del" data-act="delShop" data-idx="${idx}" aria-label="Delete">×</button>`;
     c.appendChild(d);
   });
 }
 function toggleShop(idx) { shopping[idx].checked = !shopping[idx].checked; save('shopping',shopping); renderShop(); }
 function delShop(idx) { shopping.splice(idx,1); save('shopping',shopping); renderShop(); }
-function openAddShop() { document.getElementById('addShopModal').classList.add('open'); }
+function openAddShop() { openModal('addShopModal'); }
 function addShopItem() {
   const n = document.getElementById('newShopItem').value.trim();
   if (!n) return;
-  shopping.push({name:n,checked:false}); save('shopping',shopping); renderShop();
+  shopping.push({ name:n, checked:false }); save('shopping',shopping); renderShop();
   closeM('addShopModal'); document.getElementById('newShopItem').value = '';
 }
 
@@ -721,33 +794,41 @@ function renderRec() {
   const c = document.getElementById('recBody');
   if (!recipes.length) { c.innerHTML = '<div class="rempty">No recipes saved yet.<br>Chat with me about a meal,<br>then tap Save Recipe here!</div>'; return; }
   c.innerHTML = '';
-  recipes.forEach((r,idx) => {
+  recipes.forEach((r, idx) => {
     const d = document.createElement('div'); d.className = 'rcard';
-    d.innerHTML = '<div class="rtop"><span class="rname">'+r.name+'</span><button class="ibtn del" onclick="delRec('+idx+')">Delete</button></div>'+(r.macros?'<div class="rmeta">'+r.macros+'</div>':'')+(r.body?'<div class="rbody" id="rb'+idx+'">'+r.body.replace(/\n/g,'<br>')+'</div><span class="rtoggle" onclick="togRec('+idx+')">Show details ▾</span>':'');
+    d.innerHTML = '<div class="rtop"><span class="rname">'+esc(r.name)+'</span><button class="ibtn del" data-act="delRec" data-idx="'+idx+'">Delete</button></div>'
+      + (r.macros ? '<div class="rmeta">'+esc(r.macros)+'</div>' : '')
+      + (r.body ? '<div class="rbody" id="rb'+idx+'">'+esc(r.body).replace(/\n/g,'<br>')+'</div><span class="rtoggle" data-act="togRec" data-idx="'+idx+'">Show details ▾</span>' : '');
     c.appendChild(d);
   });
 }
-function togRec(idx) { const b=document.getElementById('rb'+idx); if(!b)return; b.classList.toggle('open'); b.nextElementSibling.textContent=b.classList.contains('open')?'Hide ▴':'Show details ▾'; }
+function togRec(idx) {
+  const b = document.getElementById('rb'+idx); if (!b) return;
+  b.classList.toggle('open');
+  if (b.nextElementSibling) b.nextElementSibling.textContent = b.classList.contains('open') ? 'Hide ▴' : 'Show details ▾';
+}
 function delRec(idx) { recipes.splice(idx,1); saveRecipes(); renderRec(); }
-function openAddRec() { document.getElementById('addRecModal').classList.add('open'); }
+function openAddRec() { openModal('addRecModal'); }
 function addRecipe() {
   const n = document.getElementById('rName').value.trim(); if (!n) return;
-  recipes.push({name:n, macros:document.getElementById('rMacros').value.trim(), body:document.getElementById('rBody').value.trim()});
+  recipes.push({ name:n, macros:document.getElementById('rMacros').value.trim(), body:document.getElementById('rBody').value.trim() });
   saveRecipes(); renderRec(); closeM('addRecModal');
-  ['rName','rMacros','rBody'].forEach(id=>document.getElementById(id).value='');
+  ['rName','rMacros','rBody'].forEach(id => document.getElementById(id).value = '');
 }
 
 // ─── WEEKLY STATS ────────────────────────────────────────────────────────────
 function renderStats() {
   const days = [];
-  for (let i=-6;i<=0;i++) { const ds=dateStr(i); const log=foodLog[ds]||[]; days.push({label:friendlyDate(i).slice(0,3),ds,cal:log.reduce((s,e)=>s+(e.cal||0),0),prot:log.reduce((s,e)=>s+(e.prot||0),0)}); }
-  const logged = days.filter(d=>d.cal>0);
-  const avgCal = logged.length ? Math.round(logged.reduce((s,d)=>s+d.cal,0)/logged.length) : 0;
+  for (let i=-6;i<=0;i++) {
+    const ds = dateStr(i), log = foodLog[ds] || [];
+    days.push({ label:friendlyDate(i).slice(0,3), ds, cal:sumCal(log), prot:sumProt(log) });
+  }
+  const logged  = days.filter(d => d.cal > 0);
+  const avgCal  = logged.length ? Math.round(logged.reduce((s,d)=>s+d.cal,0)/logged.length) : 0;
   const avgProt = logged.length ? Math.round(logged.reduce((s,d)=>s+d.prot,0)/logged.length) : 0;
-  const protDays = days.filter(d=>d.prot>=160).length;
-  const waterStreak = parseInt(localStorage.getItem('waterStreak')||'0');
-  const sb = document.getElementById('statsBody');
-  sb.innerHTML = '';
+  const protDays = days.filter(d => d.prot >= PROT_GOAL).length;
+  const sb = document.getElementById('statsBody'); sb.innerHTML = '';
+
   const wk = document.createElement('div'); wk.className = 'week-card';
   wk.innerHTML = `<div class="week-card-title"><span>This Week</span><span style="font-size:11px;color:var(--muted)">${logged.length}/7 days logged</span></div>
     <div class="week-grid">
@@ -755,21 +836,23 @@ function renderStats() {
       <div class="week-stat"><div class="week-stat-val">${avgProt}g</div><div class="week-stat-lbl">Avg Protein</div></div>
       <div class="week-stat"><div class="week-stat-val">${protDays}/7</div><div class="week-stat-lbl">Protein Goal</div></div>
     </div>
-    <div style="margin-top:10px">${days.map(d=>`<div class="day-row"><span class="day-name">${d.label}</span><div class="day-bar-bg"><div class="day-bar-fill" style="width:${Math.min(100,Math.round(d.cal/1600*100))}%"></div></div><span class="day-val">${d.cal||'–'}</span></div>`).join('')}</div>`;
+    <div style="margin-top:10px">${days.map(d=>`<div class="day-row"><span class="day-name">${d.label}</span><div class="day-bar-bg"><div class="day-bar-fill" style="width:${clampPct(d.cal,CAL_GOAL)}%"></div></div><span class="day-val">${d.cal||'–'}</span></div>`).join('')}</div>`;
   sb.appendChild(wk);
+
   const sk = document.createElement('div'); sk.className = 'week-card';
   sk.innerHTML = `<div class="week-card-title">Streaks 🔥</div>
     <div class="streak-row">
       <div class="streak-item"><div class="streak-emoji">💪</div><div class="streak-num">${getStreak()}</div><div class="streak-lbl">Protein goal days</div></div>
-      <div class="streak-item"><div class="streak-emoji">💧</div><div class="streak-num">${water>=8?'✓':'${water}/8'}</div><div class="streak-lbl">Water today</div></div>
+      <div class="streak-item"><div class="streak-emoji">💧</div><div class="streak-num">${waterToday()>=WATER_GOAL?'✓':waterToday()+'/'+WATER_GOAL}</div><div class="streak-lbl">Water today</div></div>
       <div class="streak-item"><div class="streak-emoji">📋</div><div class="streak-num">${logged.length}</div><div class="streak-lbl">Days logged this week</div></div>
     </div>`;
   sb.appendChild(sk);
+
   if (weightLog.length > 1) {
     const wt = document.createElement('div'); wt.className = 'week-card';
     const first = weightLog[0], last = weightLog[weightLog.length-1];
     const diff = (last.val - first.val).toFixed(1);
-    wt.innerHTML = `<div class="week-card-title">Weight Progress</div><div style="text-align:center;padding:8px 0"><div style="font-size:28px;font-weight:600;color:${parseFloat(diff)<0?'var(--green)':'var(--red)'}">${parseFloat(diff)>0?'+':''}${diff} kg</div><div style="font-size:12px;color:var(--muted);margin-top:4px">since ${first.date}</div><div style="font-size:13px;color:var(--dim);margin-top:8px">From ${first.val} kg → ${last.val} kg</div></div>`;
+    wt.innerHTML = `<div class="week-card-title">Weight Progress</div><div style="text-align:center;padding:8px 0"><div style="font-size:28px;font-weight:600;color:${parseFloat(diff)<0?'var(--green)':'var(--red)'}">${parseFloat(diff)>0?'+':''}${diff} kg</div><div style="font-size:12px;color:var(--muted);margin-top:4px">since ${esc(first.date)}</div><div style="font-size:13px;color:var(--dim);margin-top:8px">From ${first.val} kg → ${last.val} kg</div></div>`;
     sb.appendChild(wt);
   }
 }
@@ -783,7 +866,7 @@ function getTodayLogStr() {
 }
 function getMealHistStr() {
   const recent = [];
-  for (let i=-6;i<0;i++) { const ds=dateStr(i); const log=foodLog[ds]||[]; if(log.length) recent.push(friendlyDate(i)+': '+log.map(e=>e.name).join(', ')); }
+  for (let i=-6;i<0;i++) { const ds=dateStr(i), log=foodLog[ds]||[]; if(log.length) recent.push(friendlyDate(i)+': '+log.map(e=>e.name).join(', ')); }
   return recent.length ? recent.join('\n') : 'No recent history.';
 }
 function getProfile() {
@@ -800,70 +883,118 @@ CURRENT INVENTORY:\n${getInvStr()}
 When Monica says she ate something or made a meal, remind her to log it using the Log tab or the + Add Food button. If she asks you to add items to her shopping list, list them clearly so she can add them. Be warm, specific, give calories and protein. Never suggest spinach or plain fermented foods.`;
 }
 
+const WELCOME_HTML = `<div class="welc" id="welcome"><div class="wemoji">🍽️</div><div class="wtitle">What shall we cook today?</div><p class="wtext">I know your inventory, today's log, and your goals!</p><div class="qbtns"><button class="qbtn" onclick="sq('Plan my full day: 160g protein, 1600 cal, low-carb. Check what I already ate today.')"><span class="qico">🌅</span><span>Full day plan</span></button><button class="qbtn" onclick="sq('High-protein low-carb breakfast under 400 cal')"><span class="qico">🍳</span><span>Breakfast</span></button><button class="qbtn" onclick="sq('High-protein low-carb lunch idea')"><span class="qico">🥗</span><span>Lunch</span></button><button class="qbtn" onclick="sq('High-protein satisfying dinner idea')"><span class="qico">🍗</span><span>Dinner</span></button><button class="qbtn" onclick="sq('3 high-protein snacks under 200 cal each')"><span class="qico">🥤</span><span>Snacks</span></button><button class="qbtn" onclick="sq('What can I batch cook this week in my multicooker?')"><span class="qico">🥣</span><span>Batch cook</span></button><button class="qbtn" onclick="sq('Help me use up my expiring items')"><span class="qico">⚡</span><span>Expiring items</span></button><button class="qbtn" onclick="sq('High-fiber high-protein meal idea')"><span class="qico">🌾</span><span>High fiber</span></button></div></div>`;
+
 function clearChat() {
-  chatHistory = [];
-  document.getElementById('messages').innerHTML = `<div class="welc" id="welcome"><div class="wemoji">🍽️</div><div class="wtitle">What shall we cook today?</div><p class="wtext">I know your inventory, today's log, and your goals!</p><div class="qbtns"><button class="qbtn" onclick="sq('Plan my full day: 160g protein, 1600 cal, low-carb. Check what I already ate today.')"><span class="qico">🌅</span><span>Full day plan</span></button><button class="qbtn" onclick="sq('High-protein low-carb breakfast under 400 cal')"><span class="qico">🍳</span><span>Breakfast</span></button><button class="qbtn" onclick="sq('High-protein low-carb lunch idea')"><span class="qico">🥗</span><span>Lunch</span></button><button class="qbtn" onclick="sq('High-protein satisfying dinner idea')"><span class="qico">🍗</span><span>Dinner</span></button><button class="qbtn" onclick="sq('3 high-protein snacks under 200 cal each')"><span class="qico">🥤</span><span>Snacks</span></button><button class="qbtn" onclick="sq('What can I batch cook this week in my multicooker?')"><span class="qico">🥣</span><span>Batch cook</span></button><button class="qbtn" onclick="sq('Help me use up my expiring items')"><span class="qico">⚡</span><span>Expiring items</span></button><button class="qbtn" onclick="sq('High-fiber high-protein meal idea')"><span class="qico">🌾</span><span>High fiber</span></button></div></div>`;
+  chatHistory = []; save('chatHistory', chatHistory);
+  document.getElementById('messages').innerHTML = WELCOME_HTML;
+}
+function renderChat() {
+  if (!chatHistory.length) return;        // keep welcome screen
+  const m = document.getElementById('messages'); m.innerHTML = '';
+  chatHistory.forEach(msg => addMsg(msg.role, msg.content, msg.role==='assistant'));
 }
 
-function ar(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,110)+'px'; }
-function hk(e) { if(e.key==='Enter'&&!e.shiftKey&&window.innerWidth>600){e.preventDefault();sendMessage();} }
-function sq(t) { document.getElementById('inputBox').value=t; sendMessage(); }
+function renderMarkdown(text) {
+  let html = esc(text);
+  html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>').replace(/^## (.*)$/gm, '<h2>$1</h2>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/(?:^|\n)((?:- .*(?:\n|$))+)/g, (m, block) => {
+    const items = block.trim().split('\n').map(l => '<li>'+l.replace(/^- /,'')+'</li>').join('');
+    return '\n<ul>'+items+'</ul>';
+  });
+  html = html.replace(/\n/g, '<br>');
+  html = html.replace(/<br>\s*(<\/?(?:h2|h3|ul)>)/g, '$1').replace(/(<\/(?:h2|h3|ul)>)\s*<br>/g, '$1');
+  return html;
+}
+
+function ar(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+  const btn = document.getElementById('sendBtn'); if (btn) btn.disabled = !el.value.trim();
+}
+function hk(e) { if (e.key==='Enter' && !e.shiftKey && window.innerWidth>600) { e.preventDefault(); sendMessage(); } }
+function sq(t) { const b = document.getElementById('inputBox'); b.value = t; ar(b); sendMessage(); }
 
 async function sendMessage() {
   const box = document.getElementById('inputBox');
   const text = box.value.trim(); if (!text) return;
   box.value = ''; box.style.height = 'auto';
   document.getElementById('sendBtn').disabled = true;
-  const w = document.getElementById('welcome'); if(w) w.remove();
-  chatHistory.push({role:'user', content:text});
+  const w = document.getElementById('welcome'); if (w) w.remove();
+  chatHistory.push({ role:'user', content:text });
+  save('chatHistory', chatHistory.slice(-40));
   addMsg('user', text);
-  const le = document.createElement('div'); le.className='lmsg';
-  le.innerHTML='<div class="mavatar">🥗</div><div class="lbub"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+  const le = document.createElement('div'); le.className = 'lmsg';
+  le.innerHTML = '<div class="mavatar">🥗</div><div class="lbub"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
   document.getElementById('messages').appendChild(le); scrollBot();
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+apiKey},
-      body:JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'system',content:getProfile()},...chatHistory],max_tokens:1200})
-    });
-    const data = await res.json(); le.remove();
-    if (!res.ok) throw new Error(data?.error?.message||'HTTP '+res.status);
-    const reply = data?.choices?.[0]?.message?.content||'No response.';
-    chatHistory.push({role:'assistant',content:reply});
-    addMsg('assistant', reply, true);
-  } catch(err) {
+    const reply = await groqChat([{ role:'system', content:getProfile() }, ...chatHistory], 1200);
     le.remove();
-    addMsg('assistant','⚠️ '+err.message+'\n\nTap 🔑 to update your API key.');
+    const out = reply || 'No response.';
+    chatHistory.push({ role:'assistant', content:out });
+    save('chatHistory', chatHistory.slice(-40));
+    addMsg('assistant', out, true);
+  } catch (err) {
+    le.remove();
+    addMsg('assistant', '⚠️ ' + err.message + '\n\nTap 🔑 to update your API key.');
   }
   scrollBot();
 }
 
 function addMsg(role, content, showLogBtn) {
   const m = document.getElementById('messages');
-  const d = document.createElement('div'); d.className='message'+(role==='user'?' user':'');
-  const html = content.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>').replace(/^### (.*?)$/gm,'<h3>$1</h3>').replace(/^## (.*?)$/gm,'<h2>$1</h2>').replace(/^- (.*?)$/gm,'<li>$1</li>').replace(/\n/g,'<br>');
+  const d = document.createElement('div'); d.className = 'message' + (role==='user'?' user':'');
+  const html = renderMarkdown(content);
   let extra = '';
-  if (showLogBtn && role==='assistant') {
-    extra = '<div class="log-action"><button class="log-btn" onclick="openLogModal()">📋 Log a meal</button><button class="log-btn" onclick="switchTab(\'log\')">View today\'s log</button></div>';
+  if (showLogBtn && role === 'assistant') {
+    extra = '<div class="log-action"><button class="log-btn" data-act="openLog">📋 Log a meal</button><button class="log-btn" data-act="goLog">View today\'s log</button></div>';
   }
   d.innerHTML = role==='assistant'
     ? '<div class="mavatar">🥗</div><div class="mbubble">'+html+extra+'</div>'
     : '<div class="mbubble">'+html+'</div>';
   m.appendChild(d); scrollBot();
 }
-function scrollBot() { const m=document.getElementById('messages'); m.scrollTop=m.scrollHeight; }
+function scrollBot() { const m = document.getElementById('messages'); m.scrollTop = m.scrollHeight; }
 
-// ─── KEY BUTTON ──────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-  var btn = document.getElementById('startBtn');
-  if (btn) btn.addEventListener('click', saveKey);
-  var input = document.getElementById('keyInput');
-  if (input) input.addEventListener('keydown', function(e){ if(e.key==='Enter') saveKey(); });
-});
 // ─── MODALS ──────────────────────────────────────────────────────────────────
+function openModal(id) {
+  const el = document.getElementById(id); el.classList.add('open');
+  const inp = el.querySelector('input,textarea'); if (inp) setTimeout(() => inp.focus(), 50);
+}
 function closeM(id) { document.getElementById(id).classList.remove('open'); }
-['addItemModal','addShopModal','addRecModal','addLogModal'].forEach(id => {
-  document.getElementById(id).addEventListener('click', function(e){ if(e.target===this) closeM(id); });
+
+// ─── EVENT DELEGATION ──────────────────────────────────────────────────────────
+function onDelegatedClick(e) {
+  const t = e.target.closest('[data-act]'); if (!t) return;
+  const a = t.dataset;
+  switch (a.act) {
+    case 'delItem':    delItem(a.cat, +a.idx); break;
+    case 'delShop':    delShop(+a.idx); break;
+    case 'toggleShop': toggleShop(+a.idx); break;
+    case 'delRec':     delRec(+a.idx); break;
+    case 'togRec':     togRec(+a.idx); break;
+    case 'delLog':     delLogEntry(a.ds, +a.idx); break;
+    case 'delWeight':  delWeight(+a.idx); break;
+    case 'delWaist':   delWaist(+a.idx); break;
+    case 'openLog':    openLogModal(); break;
+    case 'goLog':      switchTab('log'); break;
+  }
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+document.addEventListener('click', onDelegatedClick);
+document.addEventListener('DOMContentLoaded', function() {
+  const btn = document.getElementById('startBtn'); if (btn) btn.addEventListener('click', saveKey);
+  const input = document.getElementById('keyInput'); if (input) input.addEventListener('keydown', e => { if (e.key==='Enter') saveKey(); });
+  ['addItemModal','addShopModal','addRecModal','addLogModal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('click', function(e){ if (e.target===this) closeM(id); });
+  });
 });
+window.addEventListener('resize', debounce(() => renderBody(), 200));
+
+if (apiKey) showMain();
 </script>
 </body>
 </html>
